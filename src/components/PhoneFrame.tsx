@@ -44,8 +44,8 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const phoneWidth = isLandscape ? 960 : 480;
-  const phoneHeight = isLandscape ? 480 : 960;
+  const phoneWidth = isLandscape ? 780 : 380;
+  const phoneHeight = isLandscape ? 390 : 780;
 
   return (
     <div style={{
