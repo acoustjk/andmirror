@@ -8,6 +8,7 @@ export class ServerlessWebAdb {
   private serverProcess: any = null;
   private videoSocket: any = null;
   private controlSocket: any = null;
+  private controlWriter: any = null;
   
   private onVideoDataCallback: ((data: Uint8Array) => void) | null = null;
   private isConnected = false;
@@ -126,6 +127,7 @@ export class ServerlessWebAdb {
         // Second connection is usually the Control Socket
         console.log('[WebUSB] Control Socket Connection established!');
         this.controlSocket = socket;
+        this.controlWriter = (socket.writable as any).getWriter();
         this.readControlFeedback(socket);
       }
     });
@@ -182,16 +184,14 @@ export class ServerlessWebAdb {
    * Inject mouse touch packet directly via WebUSB control socket
    */
   async injectTouch(buffer: Uint8Array) {
-    if (!this.controlSocket) {
-      alert('[디버깅 알림] 터치 실패: 제어 소켓(controlSocket)이 맺어지지 않은 상태입니다! (F12 콘솔 로그에서 Control Socket Connection established 문구가 떴는지 확인하세요)');
-      console.warn('[WebUSB] injectTouch: No control socket connected yet.');
+    if (!this.controlWriter) {
+      console.warn('[WebUSB] injectTouch: No control writer active.');
       return;
     }
-    const writer = (this.controlSocket.writable as any).getWriter();
     try {
-      await writer.write(buffer);
-    } finally {
-      writer.releaseLock();
+      await this.controlWriter.write(buffer);
+    } catch (e) {
+      console.error('[WebUSB] Failed to write touch event:', e);
     }
   }
 
@@ -199,15 +199,14 @@ export class ServerlessWebAdb {
    * Inject key event packet directly via WebUSB control socket
    */
   async injectKey(buffer: Uint8Array) {
-    if (!this.controlSocket) {
-      console.warn('[WebUSB] injectKey: No control socket connected yet.');
+    if (!this.controlWriter) {
+      console.warn('[WebUSB] injectKey: No control writer active.');
       return;
     }
-    const writer = (this.controlSocket.writable as any).getWriter();
     try {
-      await writer.write(buffer);
-    } finally {
-      writer.releaseLock();
+      await this.controlWriter.write(buffer);
+    } catch (e) {
+      console.error('[WebUSB] Failed to write key event:', e);
     }
   }
 
@@ -287,6 +286,10 @@ export class ServerlessWebAdb {
     if (this.videoSocket) {
       try { this.videoSocket.close(); } catch(e){}
       this.videoSocket = null;
+    }
+    if (this.controlWriter) {
+      try { this.controlWriter.releaseLock(); } catch(e){}
+      this.controlWriter = null;
     }
     if (this.controlSocket) {
       try { this.controlSocket.close(); } catch(e){}
