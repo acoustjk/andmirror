@@ -124,6 +124,9 @@ export class ServerlessWebAdb {
       this.readVideoStream(this.videoSocket);
     }, 0);
 
+    // Wait 200ms to let scrcpy-server transition to next accept() call
+    await new Promise(resolve => setTimeout(resolve, 200));
+
     console.log('[WebUSB] setupForwardSockets: Opening Control connection...');
     this.controlSocket = await this.adb.createSocket('localabstract:scrcpy');
     this.controlWriter = (this.controlSocket.writable as any).getWriter();
@@ -191,7 +194,8 @@ export class ServerlessWebAdb {
     }
     try {
       await this.controlWriter.write(new Consumable(buffer));
-    } catch (e) {
+    } catch (e: any) {
+      alert(`[터치 에러 감지] 전송 실패: ${e?.message || e}`);
       console.error('[WebUSB] Failed to write touch event:', e);
     }
   }
