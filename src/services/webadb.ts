@@ -88,9 +88,11 @@ export class ServerlessWebAdb {
   private async pushScrcpyServer() {
     if (!this.adb) return;
 
-    const res = await fetch('/scrcpy-server');
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    const serverUrl = baseUrl.endsWith('/') ? `${baseUrl}scrcpy-server` : `${baseUrl}/scrcpy-server`;
+    const res = await fetch(serverUrl);
     if (!res.ok) {
-      throw new Error('scrcpy-server 바이너리 fetch 실패');
+      throw new Error(`scrcpy-server 바이너리 fetch 실패 (Status: ${res.status}, URL: ${serverUrl})`);
     }
 
     const fileBuffer = await res.arrayBuffer();
