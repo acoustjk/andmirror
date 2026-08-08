@@ -365,9 +365,9 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
   return (
     <div 
       ref={containerRef}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      onPointerDown={status === 'connected' ? handlePointerDown : undefined}
+      onPointerMove={status === 'connected' ? handlePointerMove : undefined}
+      onPointerUp={status === 'connected' ? handlePointerUp : undefined}
       style={{
         width: '100%',
         height: '100%',
