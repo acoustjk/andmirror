@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { PhoneFrame } from './components/PhoneFrame';
 import { ControlToolbar } from './components/ControlToolbar';
@@ -6,13 +6,17 @@ import { TelemetryPanel } from './components/TelemetryPanel';
 import { ConnectionModal } from './components/ConnectionModal';
 import { FileTransferPanel } from './components/FileTransferPanel';
 import { GuideModal } from './components/GuideModal';
-import { webAdbManager } from './services/webadb';
+import { ServerlessWebAdb } from './services/webadb';
 import type { ConnectionMode, ConnectionStatus, DeviceInfo, TelemetryData, TouchEventData } from './types';
 
 export function App() {
   const [mode, setMode] = useState<ConnectionMode>('wifi');
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
+  const [wifiWs, setWifiWs] = useState<WebSocket | null>(null);
+  const [wsHost, setWsHost] = useState<string>('ws://localhost:8080');
   const [device, setDevice] = useState<DeviceInfo | null>(null);
+  const webAdbRef = useRef<ServerlessWebAdb | null>(null);
+  const jmuxerRef = useRef<any>(null);
 
   const [isLandscape, setIsLandscape] = useState<boolean>(false);
   const [isPowerOn, setIsPowerOn] = useState<boolean>(true);
@@ -55,34 +59,38 @@ export function App() {
   const handleConnectUsb = async () => {
     setStatus('connecting');
     try {
-      const devInfo = await webAdbManager.requestDevice();
+      const clientAdb = new ServerlessWebAdb();
+      webAdbRef.current = clientAdb;
+
+      // Dynamic switch wsHost to bypass WebSocket stream connection in MirrorCanvas
+      setWsHost('webusb');
+
+      const serial = await clientAdb.connect((videoChunk) => {
+        // Feed video chunk directly to jmuxer instance
+        if (jmuxerRef.current) {
+          jmuxerRef.current.feed({ video: videoChunk });
+        }
+      });
+
       setDevice({
-        name: devInfo.name || '안드로이드 USB 디바이스',
-        model: devInfo.model || 'Physical Android Phone',
+        name: '무설치 WebUSB 디바이스',
+        model: 'USB Client Phone',
         androidVersion: 'Android 14',
-        serial: devInfo.serial,
         resolution: { width: 1080, height: 2400 },
-        batteryLevel: 96,
-        wifiSSID: 'WebUSB Direct 3.2'
+        batteryLevel: 98,
+        wifiSSID: 'WebUSB Serverless Direct'
       });
       setTelemetry(prev => ({
         ...prev,
-        protocol: 'WebUSB 3.2 Direct (Real Hardware)'
+        protocol: `Direct WebUSB Connection (No local server / ${serial})`
       }));
       setStatus('connected');
+      setIsConnectModalOpen(false);
     } catch (err: any) {
-      console.warn('WebUSB Direct connection:', err);
-      setDevice({
-        name: 'Galaxy S24 Ultra (WebUSB)',
-        model: 'SM-S928N',
-        androidVersion: 'Android 14',
-        resolution: { width: 1080, height: 2400 },
-        batteryLevel: 92,
-        wifiSSID: 'GiGA_WiFi_5G'
-      });
-      setStatus('connected');
+      console.error('WebUSB connection failed:', err);
+      alert(`무설치 WebUSB 연결 실패: ${err?.message || err}`);
+      setStatus('disconnected');
     }
-    setIsConnectModalOpen(false);
   };
 
   // Real Wi-Fi Wireless ADB Connection Handler using Node.js WebSocket Proxy
@@ -90,7 +98,7 @@ export function App() {
     setStatus('connecting');
 
     try {
-      const ws = new WebSocket('ws://localhost:8080');
+      const ws = new WebSocket(wsHost);
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ action: 'connect', ip, port, pairingCode, pairPort }));
@@ -111,10 +119,11 @@ export function App() {
             });
             setTelemetry(prev => ({
               ...prev,
-              protocol: `Wireless ADB (ws://localhost:8080 -> ${ip}:${port})`
+              protocol: `Wireless ADB (${wsHost} -> ${ip}:${port})`
             }));
             setStatus('connected');
             setIsConnectModalOpen(false);
+            setWifiWs(ws);
           }
         } catch (e) {
           // Binary stream
@@ -140,9 +149,51 @@ export function App() {
     }
   };
 
-  // Touch Handler via WebADB
+  // Helper to build scrcpy touch control message buffer
+  const createInjectTouchBuffer = (action: number, x: number, y: number, width: number, height: number): Uint8Array => {
+    const buffer = new ArrayBuffer(32);
+    const view = new DataView(buffer);
+    view.setUint8(0, 2); // INJECT_TOUCH_EVENT = 2
+    view.setUint8(1, action);
+    view.setFloat64(2, 0, false); // pointerId
+    view.setUint32(10, x, false);
+    view.setUint32(14, y, false);
+    view.setUint16(18, width, false);
+    view.setUint16(20, height, false);
+    view.setUint16(22, 65535, false); // pressure
+    view.setUint32(24, 0, false); // actionButton
+    view.setUint32(28, 0, false); // buttons
+    return new Uint8Array(buffer);
+  };
+
+  // Helper to build scrcpy key control message buffer
+  const createInjectKeyBuffer = (action: number, keyCode: number, repeat: number, metaState: number): Uint8Array => {
+    const buffer = new ArrayBuffer(14);
+    const view = new DataView(buffer);
+    view.setUint8(0, 0); // INJECT_KEYCODE = 0
+    view.setUint8(1, action); // 0 = down, 1 = up
+    view.setUint32(2, keyCode, false);
+    view.setUint32(6, repeat, false);
+    view.setUint32(10, metaState, false);
+    return new Uint8Array(buffer);
+  };
+
+  // Touch Handler via WebADB/localtunnel
   const handleSendTouch = (touch: TouchEventData) => {
-    webAdbManager.sendTouch(touch.xRatio, touch.yRatio, touch.type === 'down');
+    if (wsHost === 'webusb' && webAdbRef.current) {
+      const x = Math.round(touch.xRatio * 1080);
+      const y = Math.round(touch.yRatio * 2400);
+      const action = touch.type === 'down' ? 0 : touch.type === 'up' ? 1 : 2;
+      const buf = createInjectTouchBuffer(action, x, y, 1080, 2400);
+      webAdbRef.current.injectTouch(buf);
+    } else if (wifiWs && wifiWs.readyState === WebSocket.OPEN) {
+      wifiWs.send(JSON.stringify({
+        action: 'inject_touch',
+        xRatio: touch.xRatio,
+        yRatio: touch.yRatio,
+        type: touch.type
+      }));
+    }
     setTelemetry(prev => ({
       ...prev,
       touchEventsCount: prev.touchEventsCount + 1
@@ -161,7 +212,25 @@ export function App() {
       NOTIFICATION: 83
     };
     const code = keyMap[keyName] || 3;
-    webAdbManager.sendKeyEvent(code);
+    
+    // System navigation keys (Back, Home, Recents, Power) should bypass via ADB shell input
+    const isSystemKey = code === 3 || code === 4 || code === 187 || code === 26;
+
+    if (wsHost === 'webusb' && webAdbRef.current) {
+      if (isSystemKey) {
+        webAdbRef.current.injectSystemKey(code.toString());
+      } else {
+        const downBuf = createInjectKeyBuffer(0, code, 0, 0);
+        const upBuf = createInjectKeyBuffer(1, code, 0, 0);
+        webAdbRef.current.injectKey(downBuf);
+        setTimeout(() => webAdbRef.current?.injectKey(upBuf), 30);
+      }
+    } else if (wifiWs && wifiWs.readyState === WebSocket.OPEN) {
+      wifiWs.send(JSON.stringify({
+        action: 'inject_key',
+        keyCode: code
+      }));
+    }
   };
 
   // HD Screenshot Capture Function
@@ -244,6 +313,9 @@ export function App() {
             onVolumeDown={() => handleSendKey('VOLUME_DOWN')}
             onSendTouch={handleSendTouch}
             onOpenConnectModal={() => setIsConnectModalOpen(true)}
+            ipAddress={device?.ipAddress}
+            wsHost={wsHost}
+            onJmuxerInit={(jmuxer) => { jmuxerRef.current = jmuxer; }}
           />
         </div>
 
@@ -273,12 +345,17 @@ export function App() {
         status={status}
         onConnectUsb={handleConnectUsb}
         onConnectWifi={handleConnectWifi}
+        wsHost={wsHost}
+        setWsHost={setWsHost}
       />
 
       {/* File & APK Drag Drop Modal */}
       <FileTransferPanel
         isOpen={isFileTransferOpen}
         onClose={() => setIsFileTransferOpen(false)}
+        wifiWs={wifiWs}
+        wsHost={wsHost}
+        clientAdb={webAdbRef.current}
       />
 
       {/* Developer Guide Modal */}

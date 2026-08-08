@@ -10,6 +10,9 @@ interface MirrorCanvasProps {
   onSendTouch: (touch: TouchEventData) => void;
   onOpenConnectModal: () => void;
   videoStream?: MediaStream | null;
+  ipAddress?: string;
+  wsHost?: string;
+  onJmuxerInit?: (jmuxer: any) => void;
 }
 
 export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
@@ -19,11 +22,15 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
   onSendTouch,
   onOpenConnectModal,
   videoStream,
+  ipAddress,
+  wsHost = 'ws://localhost:8080',
+  onJmuxerInit,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const jmuxerRef = useRef<any>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const [touchRipples, setTouchRipples] = useState<Array<{ id: number; x: number; y: number }>>([]);
   const [isRealVideoPlaying, setIsRealVideoPlaying] = useState<boolean>(false);
@@ -48,39 +55,52 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
         flv: false,
         fps: 60,
         debug: false,
-        clearBuffer: true
-      });
+        clearBuffer: true,
+        flushingTime: 50
+      } as any);
+
+      if (wsHost === 'webusb') {
+        if (onJmuxerInit) onJmuxerInit(jmuxerRef.current);
+        setIsRealVideoPlaying(true);
+        return;
+      }
 
       // Connect to WebSocket H.264 video stream from scrcpy-server
-      const ws = new WebSocket('ws://localhost:8080');
+      const ws = new WebSocket(wsHost);
+      wsRef.current = ws;
       ws.binaryType = 'arraybuffer';
 
-      let isHeaderFound = false;
+      let bytesReceived = 0;
+      const HEADER_LENGTH = 12; // scrcpy 2.0+ metadata header is 12 bytes
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ action: 'start_scrcpy', mode }));
+        let ip = '';
+        let port = '';
+        if (ipAddress && ipAddress.includes(':')) {
+          const parts = ipAddress.split(':');
+          ip = parts[0];
+          port = parts[1];
+        }
+        ws.send(JSON.stringify({ action: 'start_scrcpy', mode, ip, port }));
       };
 
       ws.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
           let uint8 = new Uint8Array(event.data);
 
-          // Find first occurrence of H.264 NAL Unit start code [0, 0, 0, 1] or [0, 0, 1] to skip Scrcpy metadata header
-          if (!isHeaderFound) {
-            for (let i = 0; i < uint8.length - 4; i++) {
-              if (
-                (uint8[i] === 0 && uint8[i + 1] === 0 && uint8[i + 2] === 0 && uint8[i + 3] === 1) ||
-                (uint8[i] === 0 && uint8[i + 1] === 0 && uint8[i + 2] === 1)
-              ) {
-                uint8 = uint8.subarray(i);
-                isHeaderFound = true;
-                console.log(`[Scrcpy Decoder Engine] Found H.264 NAL start code at byte offset ${i}! Feeding to JMuxer...`);
-                break;
-              }
+          if (bytesReceived < HEADER_LENGTH) {
+            const needed = HEADER_LENGTH - bytesReceived;
+            if (uint8.length <= needed) {
+              bytesReceived += uint8.length;
+              return;
+            } else {
+              uint8 = uint8.subarray(needed);
+              bytesReceived = HEADER_LENGTH;
+              console.log(`[Scrcpy Decoder Engine] Skipped scrcpy 2.x metadata header (${HEADER_LENGTH} bytes). Feeding stream to JMuxer...`);
             }
           }
 
-          if (isHeaderFound && jmuxerRef.current) {
+          if (jmuxerRef.current) {
             jmuxerRef.current.feed({
               video: uint8
             });
@@ -97,11 +117,70 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
           jmuxerRef.current = null;
         }
         ws.close();
+        wsRef.current = null;
       };
     } catch (e) {
       console.warn('JMuxer init:', e);
     }
-  }, [status, mode, videoStream]);
+  }, [status, mode, videoStream, ipAddress]);
+
+  // Keyboard & Mouse Scroll events wiring
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    if (status !== 'connected' || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    const direction = e.deltaY > 0 ? 'down' : 'up';
+    wsRef.current.send(JSON.stringify({ action: 'inject_scroll', direction }));
+  };
+
+  useEffect(() => {
+    if (status !== 'connected') return;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' || 
+        target.tagName === 'TEXTAREA' || 
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      const hanToEngMap: Record<string, string> = {
+        'ㅂ': 'q', 'ㅃ': 'Q', 'ㅈ': 'w', 'ㅉ': 'W', 'ㄷ': 'e', 'ㄸ': 'E', 'ㄱ': 'r', 'ㄲ': 'R', 'ㅅ': 't', 'ㅆ': 'T',
+        'ㅛ': 'y', 'ㅕ': 'u', 'ㅑ': 'i', 'ㅐ': 'o', 'ㅒ': 'O', 'ㅔ': 'p', 'ㅖ': 'P',
+        'ㅁ': 'a', 'ㄴ': 's', 'ㅇ': 'd', 'ㄹ': 'f', 'ㅎ': 'g', 'ㅗ': 'h', 'ㅓ': 'j', 'ㅏ': 'k', 'ㅣ': 'l',
+        'ㅋ': 'z', 'ㅌ': 'x', 'ㅊ': 'c', 'ㅍ': 'v', 'ㅠ': 'b', 'ㅜ': 'n', 'ㅡ': 'm'
+      };
+
+      const controlKeyMap: Record<string, number> = {
+        Backspace: 67,
+        Enter: 66,
+        Tab: 61,
+        Escape: 111,
+        ArrowUp: 19,
+        ArrowDown: 20,
+        ArrowLeft: 21,
+        ArrowRight: 22,
+      };
+
+      const key = e.key;
+
+      if (controlKeyMap[key]) {
+        e.preventDefault();
+        wsRef.current.send(JSON.stringify({ action: 'inject_key', keyCode: controlKeyMap[key] }));
+      } else if (hanToEngMap[key]) {
+        wsRef.current.send(JSON.stringify({ action: 'inject_text', text: hanToEngMap[key] }));
+      } else if (key.length === 1) {
+        wsRef.current.send(JSON.stringify({ action: 'inject_text', text: key }));
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [status]);
 
   // Main Canvas Render Loop (Draws the exact physical smartphone screen pixels from video element onto canvas)
   useEffect(() => {
@@ -121,6 +200,21 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
         // Draw exact physical smartphone screen video frame onto canvas
         if (video && video.videoWidth > 0 && !video.paused) {
           ctx.drawImage(video, 0, 0, w, h);
+
+          // RAF-based hyper-precise live buffer lag sync loop
+          if (video.buffered && video.buffered.length > 0) {
+            const bufferEnd = video.buffered.end(video.buffered.length - 1);
+            const delay = bufferEnd - video.currentTime;
+
+            if (delay > 0.3) {
+              video.currentTime = bufferEnd - 0.03;
+              video.playbackRate = 1.0;
+            } else if (delay > 0.08) {
+              video.playbackRate = 1.4;
+            } else {
+              video.playbackRate = 1.0;
+            }
+          }
         } else {
           // Dynamic gradient wallpaper while stream initializes
           const grad = ctx.createLinearGradient(0, 0, w, h);
@@ -206,13 +300,23 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
         autoPlay
         playsInline
         muted
-        style={{ display: 'none' }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0,
+          pointerEvents: 'none',
+          zIndex: -1
+        }}
       />
 
       <canvas
         ref={canvasRef}
         width={isLandscape ? 1280 : 720}
         height={isLandscape ? 720 : 1480}
+        onWheel={handleWheel}
         style={{
           width: '100%',
           height: '100%',

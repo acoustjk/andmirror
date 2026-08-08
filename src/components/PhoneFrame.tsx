@@ -13,6 +13,9 @@ interface PhoneFrameProps {
   onVolumeDown: () => void;
   onSendTouch: (touch: TouchEventData) => void;
   onOpenConnectModal: () => void;
+  ipAddress?: string;
+  wsHost?: string;
+  onJmuxerInit?: (jmuxer: any) => void;
 }
 
 export const PhoneFrame: React.FC<PhoneFrameProps> = ({
@@ -25,6 +28,9 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({
   onVolumeDown,
   onSendTouch,
   onOpenConnectModal,
+  ipAddress,
+  wsHost,
+  onJmuxerInit,
 }) => {
   const [timeStr, setTimeStr] = useState<string>('');
 
@@ -186,6 +192,9 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({
                   isLandscape={isLandscape}
                   onSendTouch={onSendTouch}
                   onOpenConnectModal={onOpenConnectModal}
+                  ipAddress={ipAddress}
+                  wsHost={wsHost}
+                  onJmuxerInit={onJmuxerInit}
                 />
               </div>
             </>

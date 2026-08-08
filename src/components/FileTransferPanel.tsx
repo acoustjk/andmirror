@@ -1,46 +1,149 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UploadCloud, FileCode, X } from 'lucide-react';
 
 interface FileTransferPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  wifiWs: WebSocket | null;
+  wsHost?: string;
+  clientAdb?: any;
 }
 
-export const FileTransferPanel: React.FC<FileTransferPanelProps> = ({ isOpen, onClose }) => {
+export const FileTransferPanel: React.FC<FileTransferPanelProps> = ({ isOpen, onClose, wifiWs, wsHost, clientAdb }) => {
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [transfers, setTransfers] = useState<Array<{ name: string; size: string; progress: number; status: 'uploading' | 'completed' }>>([]);
+  const [transfers, setTransfers] = useState<Array<{ name: string; size: string; progress: number; status: 'uploading' | 'completed' | 'installing' | 'pushing' }>>([]);
+
+  useEffect(() => {
+    if (!wifiWs || !isOpen) return;
+
+    const handleWsMessage = (event: MessageEvent) => {
+      try {
+        const res = JSON.parse(event.data);
+        if (res.action === 'upload_status') {
+          const { fileName, status, progress, message } = res;
+          if (status === 'completed') {
+            setTransfers(prev => prev.map(t => t.name === fileName ? { ...t, progress: 100, status: 'completed' } : t));
+          } else if (status === 'installing') {
+            setTransfers(prev => prev.map(t => t.name === fileName ? { ...t, progress: progress || 95, status: 'installing' } : t));
+          } else if (status === 'pushing') {
+            setTransfers(prev => prev.map(t => t.name === fileName ? { ...t, progress: progress || 95, status: 'pushing' } : t));
+          } else if (status === 'error') {
+            alert(`전송/설치 실패: ${message || 'ADB 오류'}`);
+            setTransfers(prev => prev.filter(t => t.name !== fileName));
+          }
+        }
+      } catch (e) {
+        // Not a JSON message or unrelated
+      }
+    };
+
+    wifiWs.addEventListener('message', handleWsMessage);
+    return () => wifiWs.removeEventListener('message', handleWsMessage);
+  }, [wifiWs, isOpen]);
 
   if (!isOpen) return null;
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = Array.from(e.dataTransfer.files);
     if (files.length === 0) return;
+
+    const isWebUsbMode = wsHost === 'webusb';
+    if (!isWebUsbMode && (!wifiWs || wifiWs.readyState !== WebSocket.OPEN)) {
+      alert('스마트폰이 웹소켓에 연결되어 있지 않아 파일을 보낼 수 없습니다. 연결 상태를 확인해 주세요.');
+      return;
+    }
 
     files.forEach(file => {
       const newTransfer = {
         name: file.name,
         size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-        progress: 10,
+        progress: 0,
         status: 'uploading' as const
       };
 
       setTransfers(prev => [...prev, newTransfer]);
 
-      // Simulate ADB upload progress
-      let currentProgress = 10;
-      const interval = setInterval(() => {
-        currentProgress += 20;
-        if (currentProgress >= 100) {
-          currentProgress = 100;
-          clearInterval(interval);
-          setTransfers(prev => prev.map(t => t.name === file.name ? { ...t, progress: 100, status: 'completed' } : t));
-        } else {
-          setTransfers(prev => prev.map(t => t.name === file.name ? { ...t, progress: currentProgress } : t));
-        }
-      }, 300);
+      if (isWebUsbMode && clientAdb) {
+        // Serverless WebUSB direct transfer/install
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          if (evt.target?.result instanceof ArrayBuffer) {
+            const fileData = new Uint8Array(evt.target.result);
+            const isApk = file.name.toLowerCase().endsWith('.apk');
+
+            try {
+              if (isApk) {
+                setTransfers(prev => prev.map(t => t.name === file.name ? { ...t, progress: 50, status: 'installing' } : t));
+                await clientAdb.installApk(file.name, fileData);
+              } else {
+                setTransfers(prev => prev.map(t => t.name === file.name ? { ...t, progress: 50, status: 'pushing' } : t));
+                await clientAdb.pushFile(file.name, fileData);
+              }
+              setTransfers(prev => prev.map(t => t.name === file.name ? { ...t, progress: 100, status: 'completed' } : t));
+            } catch (err: any) {
+              alert(`무설치 전송/설치 오류: ${err?.message || err}`);
+              setTransfers(prev => prev.filter(t => t.name !== file.name));
+            }
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (wifiWs && wifiWs.readyState === WebSocket.OPEN) {
+        // WebSocket Chunking relay
+        // 1. Send upload start message
+        wifiWs.send(JSON.stringify({ action: 'upload_start', fileName: file.name }));
+
+        // 2. Read and send file in 64KB chunks
+        const reader = new FileReader();
+        const chunkSize = 64 * 1024; // 64KB
+        let offset = 0;
+
+        const readNextChunk = () => {
+          const slice = file.slice(offset, offset + chunkSize);
+          reader.readAsArrayBuffer(slice);
+        };
+
+        reader.onload = (evt) => {
+          if (evt.target?.result instanceof ArrayBuffer) {
+            const arrayBuffer = evt.target.result;
+            
+            // Encode binary to base64
+            const uint8 = new Uint8Array(arrayBuffer);
+            let binary = '';
+            const len = uint8.byteLength;
+            for (let i = 0; i < len; i++) {
+              binary += String.fromCharCode(uint8[i]);
+            }
+            const base64Chunk = btoa(binary);
+
+            offset += arrayBuffer.byteLength;
+            const progress = Math.min(Math.round((offset / file.size) * 90), 90);
+
+            if (wifiWs && wifiWs.readyState === WebSocket.OPEN) {
+              wifiWs.send(JSON.stringify({
+                action: 'upload_chunk',
+                fileName: file.name,
+                chunk: base64Chunk
+              }));
+
+              setTransfers(prev => prev.map(t => t.name === file.name ? { ...t, progress } : t));
+            }
+
+            if (offset < file.size) {
+              readNextChunk();
+            } else {
+              // Send upload end
+              if (wifiWs && wifiWs.readyState === WebSocket.OPEN) {
+                wifiWs.send(JSON.stringify({ action: 'upload_end', fileName: file.name }));
+              }
+            }
+          }
+        };
+
+        readNextChunk();
+      }
     });
   };
 
@@ -138,7 +241,9 @@ export const FileTransferPanel: React.FC<FileTransferPanelProps> = ({ isOpen, on
                     <div style={{ width: `${t.progress}%`, height: '100%', background: 'var(--accent-android)', transition: 'width 0.2s ease' }} />
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: t.status === 'completed' ? 'var(--accent-android)' : 'var(--accent-cyan)' }}>
-                    {t.status === 'completed' ? '설치/전송 완료' : `${t.progress}%`}
+                    {t.status === 'completed' ? '설치/전송 완료' : 
+                     t.status === 'installing' ? '디바이스 설치 중...' :
+                     t.status === 'pushing' ? '디바이스 전송 중...' : `${t.progress}%`}
                   </span>
                 </div>
               </div>
