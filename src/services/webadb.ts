@@ -190,7 +190,7 @@ export class ServerlessWebAdb {
       return;
     }
     try {
-      await this.controlWriter.write(buffer);
+      await this.controlWriter.write(new Consumable(buffer));
     } catch (e) {
       console.error('[WebUSB] Failed to write touch event:', e);
     }
@@ -205,7 +205,7 @@ export class ServerlessWebAdb {
       return;
     }
     try {
-      await this.controlWriter.write(buffer);
+      await this.controlWriter.write(new Consumable(buffer));
     } catch (e) {
       console.error('[WebUSB] Failed to write key event:', e);
     }
