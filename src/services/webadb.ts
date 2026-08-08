@@ -4,10 +4,10 @@ import { AdbWebUsbBackendManager } from '@yume-chan/adb-backend-webusb';
 import { Consumable, ReadableStream } from '@yume-chan/stream-extra';
 
 /**
- * Standard RSA PKCS#8 Key generator for browser standard web crypto authentications
+ * Standard RSA PKCS#8 Key generator with LocalStorage persistence to remember the PC and bypass repeated Android prompt approvals
  */
-export class InMemoryAdbCredentialStore implements AdbCredentialStore {
-  private keys: AdbPrivateKey[] = [];
+export class LocalStorageAdbCredentialStore implements AdbCredentialStore {
+  private key: AdbPrivateKey | null = null;
 
   async generateKey(): Promise<AdbPrivateKey> {
     const keyPair = await window.crypto.subtle.generateKey(
@@ -26,17 +26,41 @@ export class InMemoryAdbCredentialStore implements AdbCredentialStore {
       keyPair.privateKey
     );
 
-    const privateKey: AdbPrivateKey = {
+    // Encode key buffer to base64 for safe storage
+    const base64Key = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
+    localStorage.setItem('andmirror_rsa_private_key', base64Key);
+
+    this.key = {
       buffer: new Uint8Array(privateKeyBuffer),
       name: "andmirror-web-key"
     };
-    
-    this.keys.push(privateKey);
-    return privateKey;
+    return this.key;
   }
 
-  iterateKeys(): Iterable<AdbPrivateKey> {
-    return this.keys;
+  *iterateKeys(): Iterable<AdbPrivateKey> {
+    if (this.key) {
+      yield this.key;
+      return;
+    }
+
+    const saved = localStorage.getItem('andmirror_rsa_private_key');
+    if (saved) {
+      try {
+        const binStr = atob(saved);
+        const len = binStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binStr.charCodeAt(i);
+        }
+        this.key = {
+          buffer: bytes,
+          name: "andmirror-web-key"
+        };
+        yield this.key;
+      } catch (e) {
+        localStorage.removeItem('andmirror_rsa_private_key');
+      }
+    }
   }
 }
 
@@ -99,7 +123,7 @@ export class ServerlessWebAdb {
     const transport = await AdbDaemonTransport.authenticate({
       serial: backend.serial,
       connection: connection as any,
-      credentialStore: new InMemoryAdbCredentialStore(),
+      credentialStore: new LocalStorageAdbCredentialStore(),
       authenticators: ADB_DEFAULT_AUTHENTICATORS,
     });
 
