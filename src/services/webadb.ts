@@ -187,32 +187,21 @@ export class ServerlessWebAdb {
   /**
    * Inject mouse touch packet directly via WebUSB control socket
    */
-  async injectTouch(buffer: Uint8Array) {
-    if (!this.controlWriter) {
-      console.warn('[WebUSB] injectTouch: No control writer active.');
-      return;
-    }
-    try {
-      await this.controlWriter.write(new Consumable(buffer));
-    } catch (e: any) {
-      alert(`[터치 에러 감지] 전송 실패: ${e?.message || e}`);
+  injectTouch(buffer: Uint8Array) {
+    if (!this.controlWriter) return;
+    this.controlWriter.write(new Consumable(buffer)).catch((e: any) => {
       console.error('[WebUSB] Failed to write touch event:', e);
-    }
+    });
   }
 
   /**
    * Inject key event packet directly via WebUSB control socket
    */
-  async injectKey(buffer: Uint8Array) {
-    if (!this.controlWriter) {
-      console.warn('[WebUSB] injectKey: No control writer active.');
-      return;
-    }
-    try {
-      await this.controlWriter.write(new Consumable(buffer));
-    } catch (e) {
+  injectKey(buffer: Uint8Array) {
+    if (!this.controlWriter) return;
+    this.controlWriter.write(new Consumable(buffer)).catch((e: any) => {
       console.error('[WebUSB] Failed to write key event:', e);
-    }
+    });
   }
 
   /**
