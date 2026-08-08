@@ -74,11 +74,11 @@ export class ServerlessWebAdb {
     // 5. Push scrcpy-server binary to phone /data/local/tmp
     await this.pushScrcpyServer();
 
-    // 6. Setup reverse port forwarding listener for scrcpy video stream
-    await this.setupReversePortForwarding();
-
-    // 7. Start scrcpy-server on Android device shell
+    // 6. Start scrcpy-server on Android device shell (Forward listener)
     await this.launchScrcpyServer();
+
+    // 7. Connect to scrcpy localabstract socket from browser (Forward client)
+    await this.setupForwardSockets();
 
     return backend.serial || 'WebUSB Device';
   }
@@ -110,40 +110,37 @@ export class ServerlessWebAdb {
   }
 
   /**
-   * Setup abstract localabstract:scrcpy reverse forwarding to receive video/control streams
+   * Connect to localabstract:scrcpy server socket on Android using adb forward (createSocket)
    */
-  private async setupReversePortForwarding() {
+  private async setupForwardSockets() {
     if (!this.adb) return;
 
-    console.log('[WebUSB] setupReversePortForwarding: requesting reverse localabstract:scrcpy...');
-    // Scrcpy server will connect to reverse tunnel on port/name 'scrcpy'
-    await this.adb.reverse.add('localabstract:scrcpy', async (socket) => {
-      // First connection is usually the Video Stream socket
-      if (!this.videoSocket) {
-        console.log('[WebUSB] Video Socket Connection established!');
-        this.videoSocket = socket;
-        setTimeout(() => {
-          this.readVideoStream(socket);
-        }, 0);
-      } else if (!this.controlSocket) {
-        // Second connection is usually the Control Socket
-        console.log('[WebUSB] Control Socket Connection established!');
-        this.controlSocket = socket;
-        this.controlWriter = (socket.writable as any).getWriter();
-        setTimeout(() => {
-          this.readControlFeedback(socket);
-        }, 0);
-      }
-    });
+    console.log('[WebUSB] setupForwardSockets: Waiting 400ms for scrcpy-server listener to start...');
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    console.log('[WebUSB] setupForwardSockets: Opening Video connection...');
+    this.videoSocket = await this.adb.createSocket('localabstract:scrcpy');
+    setTimeout(() => {
+      this.readVideoStream(this.videoSocket);
+    }, 0);
+
+    console.log('[WebUSB] setupForwardSockets: Opening Control connection...');
+    this.controlSocket = await this.adb.createSocket('localabstract:scrcpy');
+    this.controlWriter = (this.controlSocket.writable as any).getWriter();
+    setTimeout(() => {
+      this.readControlFeedback(this.controlSocket);
+    }, 0);
+
+    console.log('[WebUSB] setupForwardSockets: Sockets connected successfully!');
   }
 
   /**
-   * Run the actual scrcpy-server process inside android shell
+   * Run the actual scrcpy-server process inside android shell (Forward mode)
    */
   private async launchScrcpyServer() {
     // Run scrcpy-server using app_process
     this.serverProcess = await this.spawnCommand(
-      'CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server 2.4 tunnel_forward=false video=true audio=false control=true max_size=1080 video_bit_rate=4000000 max_fps=60'
+      'CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server 2.4 tunnel_forward=true video=true audio=false control=true max_size=1080 video_bit_rate=4000000 max_fps=60'
     );
   }
 
@@ -304,7 +301,6 @@ export class ServerlessWebAdb {
       this.serverProcess = null;
     }
     if (this.adb) {
-      try { await this.adb.reverse.remove('localabstract:scrcpy'); } catch(e){}
       this.adb = null;
     }
   }
