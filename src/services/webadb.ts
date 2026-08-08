@@ -1,68 +1,7 @@
 import { Adb, AdbDaemonTransport, ADB_DEFAULT_AUTHENTICATORS } from '@yume-chan/adb';
-import type { AdbPrivateKey, AdbCredentialStore } from '@yume-chan/adb';
 import { AdbWebUsbBackendManager } from '@yume-chan/adb-backend-webusb';
+import AdbWebCredentialStore from '@yume-chan/adb-credential-web';
 import { Consumable, ReadableStream } from '@yume-chan/stream-extra';
-
-/**
- * Standard RSA PKCS#8 Key generator with LocalStorage persistence to remember the PC and bypass repeated Android prompt approvals
- */
-export class LocalStorageAdbCredentialStore implements AdbCredentialStore {
-  private key: AdbPrivateKey | null = null;
-
-  async generateKey(): Promise<AdbPrivateKey> {
-    const keyPair = await window.crypto.subtle.generateKey(
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-        hash: { name: "SHA-256" }
-      },
-      true,
-      ["sign", "verify"]
-    );
-    
-    const privateKeyBuffer = await window.crypto.subtle.exportKey(
-      "pkcs8",
-      keyPair.privateKey
-    );
-
-    // Encode key buffer to base64 for safe storage
-    const base64Key = btoa(String.fromCharCode(...new Uint8Array(privateKeyBuffer)));
-    localStorage.setItem('andmirror_rsa_private_key', base64Key);
-
-    this.key = {
-      buffer: new Uint8Array(privateKeyBuffer),
-      name: "andmirror-web-key"
-    };
-    return this.key;
-  }
-
-  *iterateKeys(): Iterable<AdbPrivateKey> {
-    if (this.key) {
-      yield this.key;
-      return;
-    }
-
-    const saved = localStorage.getItem('andmirror_rsa_private_key');
-    if (saved) {
-      try {
-        const binStr = atob(saved);
-        const len = binStr.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binStr.charCodeAt(i);
-        }
-        this.key = {
-          buffer: bytes,
-          name: "andmirror-web-key"
-        };
-        yield this.key;
-      } catch (e) {
-        localStorage.removeItem('andmirror_rsa_private_key');
-      }
-    }
-  }
-}
 
 export class ServerlessWebAdb {
   private adb: Adb | null = null;
@@ -123,7 +62,7 @@ export class ServerlessWebAdb {
     const transport = await AdbDaemonTransport.authenticate({
       serial: backend.serial,
       connection: connection as any,
-      credentialStore: new LocalStorageAdbCredentialStore(),
+      credentialStore: new AdbWebCredentialStore(),
       authenticators: ADB_DEFAULT_AUTHENTICATORS,
     });
 
