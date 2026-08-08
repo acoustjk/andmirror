@@ -5,6 +5,7 @@ import { ConnectionModal } from './components/ConnectionModal';
 import { FileTransferPanel } from './components/FileTransferPanel';
 import { GuideModal } from './components/GuideModal';
 import { ServerlessWebAdb } from './services/webadb';
+import { Camera, Video, UploadCloud } from 'lucide-react';
 import type { ConnectionMode, ConnectionStatus, DeviceInfo, TouchEventData } from './types';
 
 export function App() {
@@ -19,6 +20,7 @@ export function App() {
   const [isLandscape, setIsLandscape] = useState<boolean>(false);
   const [isPowerOn, setIsPowerOn] = useState<boolean>(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(true);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
 
   // Modals
   const [isConnectModalOpen, setIsConnectModalOpen] = useState<boolean>(false);
@@ -230,6 +232,18 @@ export function App() {
 
   // Toggle Fullscreen
 
+  // HD Screenshot Capture Function
+  const handleTakeScreenshot = () => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+
+    const image = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = image;
+    link.download = `DroidMirror_Screenshot_${Date.now()}.png`;
+    link.click();
+  };
+
   // Toggle Fullscreen
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -258,23 +272,24 @@ export function App() {
         onToggleFullscreen={handleToggleFullscreen}
       />
 
-      {/* Main Workspace Area: Centered Single Column Layout */}
+      {/* Main Workspace Area: Centered Layout with Floating Tooldock */}
       <main style={{
         flex: 1,
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         padding: '24px 32px',
-        maxWidth: '1200px',
+        maxWidth: '1300px',
         margin: '0 auto',
         width: '100%'
       }}>
         {/* Centered Phone Frame & Mirroring Canvas */}
         <div style={{
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
+          gap: '24px',
           width: '100%',
           minHeight: '680px'
         }}>
@@ -295,6 +310,91 @@ export function App() {
             onSendKey={handleWebUsbSendKey}
             onSendText={handleWebUsbSendText}
           />
+
+          {/* Floating Action Utility Bar (Only active when connected) */}
+          {status === 'connected' && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+              padding: '16px 12px',
+              background: 'rgba(15, 23, 42, 0.45)',
+              backdropFilter: 'blur(16px)',
+              borderRadius: '24px',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+              alignItems: 'center'
+            }}>
+              {/* 📸 Screenshot */}
+              <button
+                onClick={handleTakeScreenshot}
+                title="화면 캡처"
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'scale(1.0)'; }}
+              >
+                <Camera size={20} />
+              </button>
+
+              {/* 🔴 Record */}
+              <button
+                onClick={() => setIsRecording(!isRecording)}
+                title={isRecording ? "녹화 중지" : "화면 녹화"}
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  background: isRecording ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                  border: isRecording ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: isRecording ? '#ef4444' : '#ffffff',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = isRecording ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = isRecording ? 'rgba(239,68,68,0.15)' : 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.transform = 'scale(1.0)'; }}
+              >
+                <Video size={20} />
+              </button>
+
+              {/* 📁 File / APK Transfer */}
+              <button
+                onClick={() => setIsFileTransferOpen(true)}
+                title="파일 및 APK 전송"
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'scale(1.0)'; }}
+              >
+                <UploadCloud size={20} />
+              </button>
+            </div>
+          )}
         </div>
       </main>
 
