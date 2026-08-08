@@ -235,6 +235,19 @@ export function App() {
     }
   };
 
+  // WebUSB Direct keyboard bindings
+  const handleWebUsbSendKey = (keyCode: number) => {
+    if (webAdbRef.current) {
+      webAdbRef.current.injectSystemKey(keyCode.toString());
+    }
+  };
+
+  const handleWebUsbSendText = (text: string) => {
+    if (webAdbRef.current) {
+      webAdbRef.current.injectSystemText(text);
+    }
+  };
+
   // HD Screenshot Capture Function
   const handleTakeScreenshot = () => {
     const canvas = document.querySelector('canvas');
@@ -318,6 +331,8 @@ export function App() {
             ipAddress={device?.ipAddress}
             wsHost={wsHost}
             onJmuxerInit={(jmuxer) => { jmuxerRef.current = jmuxer; }}
+            onSendKey={handleWebUsbSendKey}
+            onSendText={handleWebUsbSendText}
           />
         </div>
 

@@ -16,6 +16,8 @@ interface PhoneFrameProps {
   ipAddress?: string;
   wsHost?: string;
   onJmuxerInit?: (jmuxer: any) => void;
+  onSendKey?: (keyCode: number) => void;
+  onSendText?: (text: string) => void;
 }
 
 export const PhoneFrame: React.FC<PhoneFrameProps> = ({
@@ -31,6 +33,8 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({
   ipAddress,
   wsHost,
   onJmuxerInit,
+  onSendKey,
+  onSendText,
 }) => {
   const [timeStr, setTimeStr] = useState<string>('');
 
@@ -195,6 +199,8 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({
                   ipAddress={ipAddress}
                   wsHost={wsHost}
                   onJmuxerInit={onJmuxerInit}
+                  onSendKey={onSendKey}
+                  onSendText={onSendText}
                 />
               </div>
             </>

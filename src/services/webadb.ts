@@ -216,6 +216,18 @@ export class ServerlessWebAdb {
   }
 
   /**
+   * System text insertion via input text adb shell (with space escaping)
+   */
+  async injectSystemText(text: string) {
+    try {
+      const escaped = text.replace(/ /g, '%s').replace(/["'()]/g, '');
+      await this.spawnCommand(`input text ${escaped}`);
+    } catch (e) {
+      console.error('Failed to inject system text via WebUSB shell:', e);
+    }
+  }
+
+  /**
    * Push generic file to phone /sdcard/Download/ path directly via WebUSB Sync
    */
   async pushFile(fileName: string, data: Uint8Array, onProgress?: (progress: number) => void) {

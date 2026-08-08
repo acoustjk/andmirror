@@ -13,6 +13,8 @@ interface MirrorCanvasProps {
   ipAddress?: string;
   wsHost?: string;
   onJmuxerInit?: (jmuxer: any) => void;
+  onSendKey?: (keyCode: number) => void;
+  onSendText?: (text: string) => void;
 }
 
 export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
@@ -25,6 +27,8 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
   ipAddress,
   wsHost = 'ws://localhost:8080',
   onJmuxerInit,
+  onSendKey,
+  onSendText,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -136,7 +140,8 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
     if (status !== 'connected') return;
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      const isWebUsb = wsHost === 'webusb';
+      if (!isWebUsb && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) return;
 
       const target = e.target as HTMLElement;
       if (
@@ -169,11 +174,23 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
 
       if (controlKeyMap[key]) {
         e.preventDefault();
-        wsRef.current.send(JSON.stringify({ action: 'inject_key', keyCode: controlKeyMap[key] }));
+        if (isWebUsb) {
+          if (onSendKey) onSendKey(controlKeyMap[key]);
+        } else {
+          wsRef.current?.send(JSON.stringify({ action: 'inject_key', keyCode: controlKeyMap[key] }));
+        }
       } else if (hanToEngMap[key]) {
-        wsRef.current.send(JSON.stringify({ action: 'inject_text', text: hanToEngMap[key] }));
+        if (isWebUsb) {
+          if (onSendText) onSendText(hanToEngMap[key]);
+        } else {
+          wsRef.current?.send(JSON.stringify({ action: 'inject_text', text: hanToEngMap[key] }));
+        }
       } else if (key.length === 1) {
-        wsRef.current.send(JSON.stringify({ action: 'inject_text', text: key }));
+        if (isWebUsb) {
+          if (onSendText) onSendText(key);
+        } else {
+          wsRef.current?.send(JSON.stringify({ action: 'inject_text', text: key }));
+        }
       }
     };
 
@@ -181,7 +198,7 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [status]);
+  }, [status, wsHost]);
 
   // Main Canvas Render Loop (Draws the exact physical smartphone screen pixels from video element onto canvas)
   useEffect(() => {
