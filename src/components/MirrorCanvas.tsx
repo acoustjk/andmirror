@@ -34,6 +34,7 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
 
   const [touchRipples, setTouchRipples] = useState<Array<{ id: number; x: number; y: number }>>([]);
   const [isRealVideoPlaying, setIsRealVideoPlaying] = useState<boolean>(false);
+  const [isPointerDownState, setIsPointerDownState] = useState<boolean>(false);
 
   // Initialize JMuxer H.264 real-time decoder on the video element
   useEffect(() => {
@@ -259,6 +260,11 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
   // Handle Touch/Click interaction on Canvas
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
+    setIsPointerDownState(true);
+    try {
+      containerRef.current.setPointerCapture(e.pointerId);
+    } catch (err) {}
+
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -282,10 +288,51 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
     });
   };
 
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isPointerDownState || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const xRatio = Math.max(0, Math.min(1, x / rect.width));
+    const yRatio = Math.max(0, Math.min(1, y / rect.height));
+
+    onSendTouch({
+      type: 'move',
+      xRatio,
+      yRatio,
+      pointerId: e.pointerId
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isPointerDownState || !containerRef.current) return;
+    setIsPointerDownState(false);
+    try {
+      containerRef.current.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const xRatio = Math.max(0, Math.min(1, x / rect.width));
+    const yRatio = Math.max(0, Math.min(1, y / rect.height));
+
+    onSendTouch({
+      type: 'up',
+      xRatio,
+      yRatio,
+      pointerId: e.pointerId
+    });
+  };
+
   return (
     <div 
       ref={containerRef}
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
       style={{
         width: '100%',
         height: '100%',
