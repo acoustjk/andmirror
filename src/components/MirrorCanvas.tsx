@@ -279,11 +279,17 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
       setTouchRipples(prev => prev.filter(r => r.id !== newId));
     }, 600);
 
+    const video = videoRef.current;
+    const width = video && video.videoWidth > 0 ? video.videoWidth : 1080;
+    const height = video && video.videoHeight > 0 ? video.videoHeight : 2400;
+
     // Send touch event to ADB handler
     onSendTouch({
       type: 'down',
       xRatio,
       yRatio,
+      width,
+      height,
       pointerId: e.pointerId
     });
   };
@@ -297,10 +303,16 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
     const xRatio = Math.max(0, Math.min(1, x / rect.width));
     const yRatio = Math.max(0, Math.min(1, y / rect.height));
 
+    const video = videoRef.current;
+    const width = video && video.videoWidth > 0 ? video.videoWidth : 1080;
+    const height = video && video.videoHeight > 0 ? video.videoHeight : 2400;
+
     onSendTouch({
       type: 'move',
       xRatio,
       yRatio,
+      width,
+      height,
       pointerId: e.pointerId
     });
   };
@@ -319,10 +331,16 @@ export const MirrorCanvas: React.FC<MirrorCanvasProps> = ({
     const xRatio = Math.max(0, Math.min(1, x / rect.width));
     const yRatio = Math.max(0, Math.min(1, y / rect.height));
 
+    const video = videoRef.current;
+    const width = video && video.videoWidth > 0 ? video.videoWidth : 1080;
+    const height = video && video.videoHeight > 0 ? video.videoHeight : 2400;
+
     onSendTouch({
       type: 'up',
       xRatio,
       yRatio,
+      width,
+      height,
       pointerId: e.pointerId
     });
   };

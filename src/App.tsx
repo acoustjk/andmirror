@@ -181,10 +181,12 @@ export function App() {
   // Touch Handler via WebADB/localtunnel
   const handleSendTouch = (touch: TouchEventData) => {
     if (wsHost === 'webusb' && webAdbRef.current) {
-      const x = Math.round(touch.xRatio * 1080);
-      const y = Math.round(touch.yRatio * 2400);
+      const w = touch.width || 1080;
+      const h = touch.height || 2400;
+      const x = Math.round(touch.xRatio * w);
+      const y = Math.round(touch.yRatio * h);
       const action = touch.type === 'down' ? 0 : touch.type === 'up' ? 1 : 2;
-      const buf = createInjectTouchBuffer(action, x, y, 1080, 2400);
+      const buf = createInjectTouchBuffer(action, x, y, w, h);
       webAdbRef.current.injectTouch(buf);
     } else if (wifiWs && wifiWs.readyState === WebSocket.OPEN) {
       wifiWs.send(JSON.stringify({

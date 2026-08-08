@@ -27,4 +27,6 @@ export interface TouchEventData {
   xRatio: number;
   yRatio: number;
   pointerId?: number;
+  width?: number;
+  height?: number;
 }
