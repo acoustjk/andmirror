@@ -114,14 +114,17 @@ export class ServerlessWebAdb {
   private async setupReversePortForwarding() {
     if (!this.adb) return;
 
+    console.log('[WebUSB] setupReversePortForwarding: requesting reverse localabstract:scrcpy...');
     // Scrcpy server will connect to reverse tunnel on port/name 'scrcpy'
     await this.adb.reverse.add('localabstract:scrcpy', async (socket) => {
       // First connection is usually the Video Stream socket
       if (!this.videoSocket) {
+        console.log('[WebUSB] Video Socket Connection established!');
         this.videoSocket = socket;
         this.readVideoStream(socket);
       } else if (!this.controlSocket) {
         // Second connection is usually the Control Socket
+        console.log('[WebUSB] Control Socket Connection established!');
         this.controlSocket = socket;
         this.readControlFeedback(socket);
       }
@@ -179,7 +182,10 @@ export class ServerlessWebAdb {
    * Inject mouse touch packet directly via WebUSB control socket
    */
   async injectTouch(buffer: Uint8Array) {
-    if (!this.controlSocket) return;
+    if (!this.controlSocket) {
+      console.warn('[WebUSB] injectTouch: No control socket connected yet.');
+      return;
+    }
     const writer = (this.controlSocket.writable as any).getWriter();
     try {
       await writer.write(new Consumable(buffer));
@@ -192,7 +198,10 @@ export class ServerlessWebAdb {
    * Inject key event packet directly via WebUSB control socket
    */
   async injectKey(buffer: Uint8Array) {
-    if (!this.controlSocket) return;
+    if (!this.controlSocket) {
+      console.warn('[WebUSB] injectKey: No control socket connected yet.');
+      return;
+    }
     const writer = (this.controlSocket.writable as any).getWriter();
     try {
       await writer.write(new Consumable(buffer));

@@ -155,7 +155,7 @@ export function App() {
     const view = new DataView(buffer);
     view.setUint8(0, 2); // INJECT_TOUCH_EVENT = 2
     view.setUint8(1, action);
-    view.setFloat64(2, 0, false); // pointerId
+    view.setBigUint64(2, 0n, false); // pointerId (BigInt format)
     view.setUint32(10, x, false);
     view.setUint32(14, y, false);
     view.setUint16(18, width, false);
