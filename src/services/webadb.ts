@@ -122,13 +122,17 @@ export class ServerlessWebAdb {
       if (!this.videoSocket) {
         console.log('[WebUSB] Video Socket Connection established!');
         this.videoSocket = socket;
-        this.readVideoStream(socket);
+        setTimeout(() => {
+          this.readVideoStream(socket);
+        }, 0);
       } else if (!this.controlSocket) {
         // Second connection is usually the Control Socket
         console.log('[WebUSB] Control Socket Connection established!');
         this.controlSocket = socket;
         this.controlWriter = (socket.writable as any).getWriter();
-        this.readControlFeedback(socket);
+        setTimeout(() => {
+          this.readControlFeedback(socket);
+        }, 0);
       }
     });
   }
