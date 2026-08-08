@@ -21,6 +21,7 @@ export function App() {
   const [isPowerOn, setIsPowerOn] = useState<boolean>(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(true);
   const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [scale, setScale] = useState<number>(1.0);
 
   // Modals
   const [isConnectModalOpen, setIsConnectModalOpen] = useState<boolean>(false);
@@ -309,6 +310,9 @@ export function App() {
             onJmuxerInit={(jmuxer) => { jmuxerRef.current = jmuxer; }}
             onSendKey={handleWebUsbSendKey}
             onSendText={handleWebUsbSendText}
+            scale={scale}
+            onVolumeUp={() => handleSendKey('VOLUME_UP')}
+            onVolumeDown={() => handleSendKey('VOLUME_DOWN')}
           />
 
           {/* Floating Action Utility Bar (Only active when connected) */}
@@ -392,6 +396,69 @@ export function App() {
                 onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'scale(1.0)'; }}
               >
                 <UploadCloud size={20} />
+              </button>
+
+              {/* Divider Line */}
+              <div style={{ width: '20px', height: '1px', background: 'rgba(255, 255, 255, 0.1)', margin: '8px 0' }} />
+
+              {/* 🔍 Scale Selection */}
+              <div style={{ fontSize: '0.58rem', color: '#64748b', fontWeight: 800 }}>SCALE</div>
+
+              <button
+                onClick={() => setScale(1.0)}
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: scale === 1.0 ? 800 : 500,
+                  color: scale === 1.0 ? 'var(--accent-android)' : '#94a3b8',
+                  background: scale === 1.0 ? 'rgba(61, 220, 132, 0.12)' : 'transparent',
+                  border: scale === 1.0 ? '1px solid rgba(61, 220, 132, 0.3)' : '1px solid transparent',
+                  padding: '4px 8px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  width: '42px',
+                  textAlign: 'center',
+                  transition: 'all 0.2s'
+                }}
+              >
+                1.0x
+              </button>
+
+              <button
+                onClick={() => setScale(1.2)}
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: scale === 1.2 ? 800 : 500,
+                  color: scale === 1.2 ? 'var(--accent-android)' : '#94a3b8',
+                  background: scale === 1.2 ? 'rgba(61, 220, 132, 0.12)' : 'transparent',
+                  border: scale === 1.2 ? '1px solid rgba(61, 220, 132, 0.3)' : '1px solid transparent',
+                  padding: '4px 8px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  width: '42px',
+                  textAlign: 'center',
+                  transition: 'all 0.2s'
+                }}
+              >
+                1.2x
+              </button>
+
+              <button
+                onClick={() => setScale(1.5)}
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: scale === 1.5 ? 800 : 500,
+                  color: scale === 1.5 ? 'var(--accent-android)' : '#94a3b8',
+                  background: scale === 1.5 ? 'rgba(61, 220, 132, 0.12)' : 'transparent',
+                  border: scale === 1.5 ? '1px solid rgba(61, 220, 132, 0.3)' : '1px solid transparent',
+                  padding: '4px 8px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  width: '42px',
+                  textAlign: 'center',
+                  transition: 'all 0.2s'
+                }}
+              >
+                1.5x
               </button>
             </div>
           )}
