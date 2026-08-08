@@ -178,6 +178,22 @@ export function App() {
     return new Uint8Array(buffer);
   };
 
+  // Helper to build scrcpy text control message buffer (INJECT_TEXT = 1)
+  const createInjectTextBuffer = (text: string): Uint8Array => {
+    const encoder = new TextEncoder();
+    const textBytes = encoder.encode(text);
+    const len = textBytes.length;
+    
+    const buffer = new ArrayBuffer(5 + len);
+    const view = new DataView(buffer);
+    view.setUint8(0, 1); // INJECT_TEXT = 1
+    view.setUint32(1, len, false); // text length
+    
+    const array = new Uint8Array(buffer);
+    array.set(textBytes, 5); // copy text at offset 5
+    return array;
+  };
+
   // Touch Handler via WebADB/localtunnel
   const handleSendTouch = (touch: TouchEventData) => {
     if (wsHost === 'webusb' && webAdbRef.current) {
@@ -235,16 +251,20 @@ export function App() {
     }
   };
 
-  // WebUSB Direct keyboard bindings
+  // WebUSB Direct keyboard bindings via high-speed binary control socket
   const handleWebUsbSendKey = (keyCode: number) => {
     if (webAdbRef.current) {
-      webAdbRef.current.injectSystemKey(keyCode.toString());
+      const downBuf = createInjectKeyBuffer(0, keyCode, 0, 0);
+      const upBuf = createInjectKeyBuffer(1, keyCode, 0, 0);
+      webAdbRef.current.injectKey(downBuf);
+      setTimeout(() => webAdbRef.current?.injectKey(upBuf), 20);
     }
   };
 
   const handleWebUsbSendText = (text: string) => {
     if (webAdbRef.current) {
-      webAdbRef.current.injectSystemText(text);
+      const buf = createInjectTextBuffer(text);
+      webAdbRef.current.injectKey(buf);
     }
   };
 
