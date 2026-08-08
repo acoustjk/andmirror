@@ -189,7 +189,7 @@ export class ServerlessWebAdb {
     }
     const writer = (this.controlSocket.writable as any).getWriter();
     try {
-      await writer.write(new Consumable(buffer));
+      await writer.write(buffer);
     } finally {
       writer.releaseLock();
     }
@@ -205,7 +205,7 @@ export class ServerlessWebAdb {
     }
     const writer = (this.controlSocket.writable as any).getWriter();
     try {
-      await writer.write(new Consumable(buffer));
+      await writer.write(buffer);
     } finally {
       writer.releaseLock();
     }
