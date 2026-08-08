@@ -183,6 +183,7 @@ export class ServerlessWebAdb {
    */
   async injectTouch(buffer: Uint8Array) {
     if (!this.controlSocket) {
+      alert('[디버깅 알림] 터치 실패: 제어 소켓(controlSocket)이 맺어지지 않은 상태입니다! (F12 콘솔 로그에서 Control Socket Connection established 문구가 떴는지 확인하세요)');
       console.warn('[WebUSB] injectTouch: No control socket connected yet.');
       return;
     }
